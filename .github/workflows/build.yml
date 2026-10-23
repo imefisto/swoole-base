@@ -1,0 +1,89 @@
+name: Build base images
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 5 * * 1" # weekly, picks up php/alpine security rebuilds
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/swoole
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { swoole: "5.1.8", php: "8.3" }
+          - { swoole: "6.1.10", php: "8.3" }
+          - { swoole: "6.1.10", php: "8.4" }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Compute tags
+        id: tags
+        run: |
+          minor="${SWOOLE%.*}"
+          echo "local=swoole:${SWOOLE}-php${PHP}-alpine" >> "$GITHUB_OUTPUT"
+          echo "list=${IMAGE}:${minor}-php${PHP}-alpine,${IMAGE}:${SWOOLE}-php${PHP}-alpine" >> "$GITHUB_OUTPUT"
+        env:
+          SWOOLE: ${{ matrix.swoole }}
+          PHP: ${{ matrix.php }}
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          load: true
+          pull: true
+          tags: ${{ steps.tags.outputs.local }}
+          build-args: |
+            PHP_VERSION=${{ matrix.php }}
+            SWOOLE_VERSION=${{ matrix.swoole }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha,scope=${{ steps.tags.outputs.local }}
+          cache-to: type=gha,mode=max,scope=${{ steps.tags.outputs.local }}
+
+      - name: Smoke test
+        run: docker run --rm "${{ steps.tags.outputs.local }}" sh -c 'php -v && php -m | grep -E "^(swoole|redis|pdo_mysql|pcntl|sockets|openssl)$" && composer --version'
+
+      - name: Scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.tags.outputs.local }}
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.tags.outputs.list }}
+          build-args: |
+            PHP_VERSION=${{ matrix.php }}
+            SWOOLE_VERSION=${{ matrix.swoole }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha,scope=${{ steps.tags.outputs.local }}
