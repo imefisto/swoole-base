@@ -3,7 +3,7 @@
 Swoole on top of the official `php:*-cli-alpine` images, rebuilt weekly so PHP and
 Alpine security fixes land without waiting for a new Swoole release.
 
-Includes: swoole (openssl, sockets, mysqlnd, curl hooks), redis, pdo_mysql, pcntl,
+Includes: swoole (openssl, sockets, mysqlnd, curl, coroutine pgsql/sqlite, zstd), redis, pdo_mysql, pcntl,
 sockets, composer.
 
 ## Images
