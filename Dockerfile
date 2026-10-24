@@ -4,8 +4,9 @@ FROM php:${PHP_VERSION}-cli-alpine
 ARG SWOOLE_VERSION
 ARG REDIS_VERSION=6.3.0
 
-RUN apk add --no-cache libstdc++ libcurl openssl \
+RUN apk add --no-cache libstdc++ libcurl openssl libpq sqlite-libs zstd-libs \
     && apk add --no-cache --virtual .build-deps $PHPIZE_DEPS linux-headers openssl-dev curl-dev \
+        postgresql-dev sqlite-dev zstd-dev \
     && docker-php-ext-install -j"$(nproc)" pcntl pdo_mysql sockets \
     && mkdir -p /usr/src/swoole \
     && curl -fsSL "https://github.com/swoole/swoole-src/archive/refs/tags/v${SWOOLE_VERSION}.tar.gz" \
@@ -13,6 +14,7 @@ RUN apk add --no-cache libstdc++ libcurl openssl \
     && cd /usr/src/swoole \
     && phpize \
     && ./configure --enable-openssl --enable-sockets --enable-mysqlnd --enable-swoole-curl \
+        --enable-swoole-pgsql --enable-swoole-sqlite --enable-zstd \
     && make -j"$(nproc)" && make install \
     && cd / && rm -rf /usr/src/swoole \
     && pecl install "redis-${REDIS_VERSION}" \
